@@ -77,3 +77,21 @@ best_model.keras
 .mypy_cache/
 .dmypy.json
 dmypy.json
+
+# Test data - hosted on Hugging Face
+test/
+data/
+dataset/
+assets/
+
+# Image files
+*.jpg
+*.jpeg
+*.png
+*.gif
+*.bmp
+
+# Dataset archives
+*.zip
+*.tar.gz
+*.rar
