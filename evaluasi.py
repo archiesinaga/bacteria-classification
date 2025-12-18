@@ -77,22 +77,32 @@ class ModelEvaluation:
                 status_text = st.empty()
                 
                 for idx, item in enumerate(dataset):
-                    # Update progress
-                    progress = (idx + 1) / len(dataset)
-                    progress_bar.progress(progress)
-                    status_text.text(f"Processing {idx + 1}/{len(dataset)} images...")
+                    try:
+                        # Update progress
+                        progress = (idx + 1) / len(dataset)
+                        progress_bar.progress(progress)
+                        status_text.text(f"Processing {idx + 1}/{len(dataset)} images...")
+                        
+                        # Get image dan label
+                        image = item['image']  # PIL Image
+                        label = item['label']  # Integer label
+                        
+                        # Validasi label
+                        if label < 0 or label >= len(self.class_names):
+                            continue
+                        
+                        # Store original untuk visualisasi
+                        original = image.resize((224, 224))
+                        original_images[label].append(np.array(original, dtype=np.uint8))
+                        
+                        # Preprocess untuk model
+                        preprocessed = self.preprocess_image(image)
+                        class_images[label].append(preprocessed)
                     
-                    # Get image dan label
-                    image = item['image']  # PIL Image
-                    label = item['label']  # Integer label
-                    
-                    # Store original untuk visualisasi
-                    original = image.resize((224, 224))
-                    original_images[label].append(np.array(original, dtype=np.uint8))
-                    
-                    # Preprocess untuk model
-                    preprocessed = self.preprocess_image(image)
-                    class_images[label].append(preprocessed)
+                    except Exception as e:
+                        # Skip image yang error
+                        st.warning(f"Skipping image {idx + 1}: {str(e)}")
+                        continue
                 
                 progress_bar.empty()
                 status_text.empty()
@@ -230,14 +240,19 @@ class ModelEvaluation:
                 return None, None
         
         # User input untuk jumlah sampel
+        default_samples = min(100, total_images)  # Default max 100 untuk performa
+        
         num_to_sample = st.number_input(
             "Jumlah gambar untuk evaluasi:",
             min_value=1,
-            max_value=total_images,
-            value=min(len(self.class_names) * 10, total_images),
-            step=1,
-            help="Pilih jumlah gambar yang akan dievaluasi. Gambar akan dipilih secara merata dari setiap kelas."
+            max_value=min(200, total_images),  # Limit max 200 untuk avoid memory issues
+            value=default_samples,
+            step=10,
+            help="Pilih jumlah gambar yang akan dievaluasi. Untuk performa optimal, gunakan max 100-200 gambar."
         )
+        
+        if num_to_sample > 150:
+            st.warning("⚠️ Evaluasi dengan >150 gambar mungkin lambat. Disarankan menggunakan 50-100 gambar.")
         
         # Pilih sampel
         test_images, test_labels = self.select_test_samples(class_images, num_to_sample)
@@ -249,27 +264,43 @@ class ModelEvaluation:
     
     def evaluate_model(self, test_images, test_labels):
         """Evaluate model on test images and display results in Streamlit."""
-        start_time = time.time()
-        
-        # Convert list ke numpy array
-        test_images = np.array(test_images, dtype=np.float32)
-        
-        # Validate the shape of the test images array
-        if test_images.ndim != 4:
-            raise ValueError(f"test_images harus berupa array dengan dimensi (jumlah_gambar, tinggi, lebar, saluran), got shape: {test_images.shape}")
-        
-        # Prediksi
-        with st.spinner('🔄 Running predictions on test set...'):
-            predictions = self.model_handler.model.predict(test_images, verbose=0)
+        try:
+            start_time = time.time()
+            
+            # Convert list ke numpy array
+            test_images = np.array(test_images, dtype=np.float32)
+            test_labels = np.array(test_labels, dtype=np.int32)
+            
+            # Validate the shape of the test images array
+            if test_images.ndim != 4:
+                raise ValueError(f"test_images harus berupa array dengan dimensi (jumlah_gambar, tinggi, lebar, saluran), got shape: {test_images.shape}")
+            
+            st.info(f"🔍 Processing {len(test_images)} images for evaluation...")
+            
+            # Prediksi dengan batch untuk memory efficiency
+            batch_size = 32
+            predictions = []
+            
+            for i in range(0, len(test_images), batch_size):
+                batch = test_images[i:i+batch_size]
+                batch_pred = self.model_handler.model.predict(batch, verbose=0)
+                predictions.extend(batch_pred)
+            
+            predictions = np.array(predictions)
             predicted_labels = np.argmax(predictions, axis=1)
-        
-        end_time = time.time()
-        execution_time = end_time - start_time
-        
-        # Display results
-        self.display_evaluation_results(test_images, test_labels, predicted_labels)
-        
-        return execution_time
+            
+            end_time = time.time()
+            execution_time = end_time - start_time
+            
+            # Display results
+            self.display_evaluation_results(test_images, test_labels, predicted_labels)
+            
+            return execution_time
+            
+        except Exception as e:
+            st.error(f"❌ Error during evaluation: {str(e)}")
+            st.exception(e)
+            return 0
     
     def display_evaluation_results(self, test_images, true_labels, predicted_labels):
         """Display evaluation results: prediction images, confusion matrix, and classification report."""
