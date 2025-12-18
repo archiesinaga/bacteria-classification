@@ -9,8 +9,6 @@ import random
 import time
 import pandas as pd
 import tensorflow as tf
-from huggingface_hub import hf_hub_download
-from datasets import load_dataset
 
 class ModelEvaluation:
     def __init__(self, model_handler, class_names):
@@ -58,6 +56,9 @@ class ModelEvaluation:
     def load_from_huggingface(self):
         """Load test dataset dari Hugging Face"""
         try:
+            # Lazy import - hanya load saat dibutuhkan
+            from datasets import load_dataset
+            
             with st.spinner('📥 Downloading test dataset from Hugging Face...'):
                 # Load dataset dari Hugging Face
                 dataset = load_dataset(self.HF_DATASET_REPO, split='test')
