@@ -4,17 +4,17 @@ Bacteria Classification Task using ConvNext Model
 
 Deep Learning project untuk klasifikasi bakteri menggunakan ConvNext Model.
 
-## Ì≥ã Deskripsi
+## ÔøΩÔøΩÔøΩ Deskripsi
 Project ini menggunakan Convolutional Neural Network (ConvNext) untuk mengklasifikasikan jenis-jenis bakteri berdasarkan gambar mikroskopis.
 
-## Ì∫Ä Teknologi yang Digunakan
+## ÔøΩÔøΩÔøΩ Teknologi yang Digunakan
 - Python 3.x
 - TensorFlow/Keras
 - ConvNext Model
 - NumPy, Pandas
 - Matplotlib
 
-## Ì≥¶ Instalasi
+## ÔøΩÔøΩÔøΩ Instalasi
 
 ### 1. Clone repository
 ```bash
@@ -38,7 +38,7 @@ venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-### 4. Download Pre-trained Model Ì¥ó
+### 4. Download Pre-trained Model ÔøΩÔøΩÔøΩ
 
 Model terlalu besar untuk disimpan di GitHub. Download dari Hugging Face:
 
@@ -49,7 +49,7 @@ Buat file `download_model.py`:
 from huggingface_hub import hf_hub_download
 import os
 
-print("Ì≥• Downloading model from Hugging Face...")
+print("ÔøΩÔøΩÔøΩ Downloading model from Hugging Face...")
 
 model_path = hf_hub_download(
     repo_id="archiesinaga/bacteria-classification-convnext",
@@ -58,7 +58,7 @@ model_path = hf_hub_download(
 )
 
 print(f"‚úÖ Model downloaded successfully!")
-print(f"Ì≥ç Model location: {model_path}")
+print(f"ÔøΩÔøΩÔøΩ Model location: {model_path}")
 ```
 
 Jalankan:
@@ -82,7 +82,32 @@ python -m huggingface_hub.commands.huggingface_cli download \
 3. Download file `best_model.keras`
 4. Letakkan di folder `models/`
 
-## Ì≤ª Cara Penggunaan
+### 5. Download Test Dataset üìä
+
+**Test dataset is also hosted on Hugging Face**
+
+#### Option A: Automatic Download (Recommended)
+```bash
+python download_test_data.py
+```
+
+#### Option B: Manual Download
+```python
+from huggingface_hub import snapshot_download
+
+dataset_path = snapshot_download(
+    repo_id="archiesinaga/bacteria-classification-test-data",
+    repo_type="dataset",
+    local_dir="./test"
+)
+```
+
+#### Option C: Via Browser
+1. Visit: [Hugging Face Dataset](https://huggingface.co/datasets/archiesinaga/bacteria-classification-test-data)
+2. Download all files
+3. Place in `test/` folder
+
+## ÔøΩÔøΩÔøΩ Cara Penggunaan
 
 ### Basic Usage
 ```bash
@@ -112,7 +137,7 @@ model = keras.models.load_model(model_path)
 predictions = model.predict(your_image_array)
 ```
 
-## Ì≥ä Struktur Project
+## ÔøΩÔøΩÔøΩ Struktur Project
 ```
 bacteria-classification/
 ‚îú‚îÄ‚îÄ models/
@@ -131,23 +156,23 @@ bacteria-classification/
 ‚îî‚îÄ‚îÄ README.md
 ```
 
-## ÌæØ Model Performance
+## ÔøΩÔøΩÔøΩ Model Performance
 
 - **Architecture:** ConvNext
 - **Framework:** TensorFlow/Keras
 - **Input Size:** 224x224 pixels
-- **Classes:** [Jumlah kelas bacteria Anda]
+- **Classes:** [33]
 
-## Ì¥ó Links
+## ÔøΩÔøΩÔøΩ Links
 
 - **GitHub Repository:** [bacteria-classification](https://github.com/archiesinaga/bacteria-classification)
 - **Hugging Face Model:** [bacteria-classification-convnext](https://huggingface.co/archiesinaga/bacteria-classification-convnext)
 
-## Ì≥à Results
+## ÔøΩÔøΩÔøΩ Results
 
-[Tambahkan screenshot hasil klasifikasi, confusion matrix, atau grafik training di sini]
+[]
 
-## Ì¥ù Contributing
+## ÔøΩÔøΩÔøΩ Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
 
@@ -157,23 +182,30 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 4. Push to the Branch (`git push origin feature/AmazingFeature`)
 5. Open a Pull Request
 
-## Ì±§ Author
+## ÔøΩÔøΩÔøΩ Author
 
 **Archie Sinaga**
 
 - GitHub: [@archiesinaga](https://github.com/archiesinaga)
 - Hugging Face: [@archiesinaga](https://huggingface.co/archiesinaga)
 
-## Ì≥Ñ License
+## ÔøΩÔøΩÔøΩ License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-## Ìπè Acknowledgments
+## ÔøΩÔøΩÔøΩ Acknowledgments
 
 - ConvNext Paper: [A ConvNet for the 2020s](https://arxiv.org/abs/2201.03545)
 - Hugging Face for model hosting
 - TensorFlow/Keras team
 
 ---
+
+## ‚ö° Quick Setup (One Command)
+
+Download both model and dataset:
+```bash
+python download_model.py && python download_test_data.py
+```
 
 **‚≠ê Jika project ini membantu Anda, berikan star di GitHub!**
