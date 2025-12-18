@@ -1,0 +1,18 @@
+# File .gitignore untuk Python project
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+*.egg-info/
+dist/
+build/
+*.log
+.DS_Store
+.vscode/
+*.keras
+*.h5
+best_model.keras
