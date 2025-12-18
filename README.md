@@ -208,4 +208,7 @@ Download both model and dataset:
 python download_model.py && python download_test_data.py
 ```
 
+## 🚀 Live Demo
+[https://bacteria-classification-bgjyveczovn44hkbeihjwr.streamlit.app/](https://bacteria-classification-bgjyveczovn44hkbeihjwr.streamlit.app/)
+
 **⭐ Jika project ini membantu Anda, berikan star di GitHub!**
