@@ -53,6 +53,37 @@ class ModelEvaluation:
         
         return image
     
+    def preprocess_images_batch(self, images):
+        """
+        Preprocess multiple images sekaligus untuk performa lebih cepat.
+        
+        Args:
+            images: List of PIL Images atau paths
+        Returns:
+            numpy array of preprocessed images
+        """
+        processed = []
+        for img in images:
+            # Load image jika berupa path
+            if isinstance(img, str):
+                img = Image.open(img)
+            
+            # Convert ke RGB jika grayscale
+            if img.mode != 'RGB':
+                img = img.convert('RGB')
+            
+            # Resize ke ukuran training (224x224)
+            img = img.resize((224, 224))
+            
+            # Convert ke numpy array
+            processed.append(np.array(img, dtype=np.float32))
+        
+        # Stack menjadi batch dan preprocess sekaligus
+        batch = np.stack(processed, axis=0)
+        batch = tf.keras.applications.convnext.preprocess_input(batch)
+        
+        return batch
+    
     def load_from_huggingface(self):
         """Load test dataset dari Hugging Face"""
         try:
@@ -69,19 +100,21 @@ class ModelEvaluation:
                 
                 st.info(f"☁️ Loaded {len(dataset)} test images from Hugging Face")
                 
-                # Inisialisasi
-                class_images = {label: [] for label in range(len(self.class_names))}
+                # Inisialisasi - simpan PIL images dulu, preprocess nanti
+                class_images_raw = {label: [] for label in range(len(self.class_names))}
                 original_images = {label: [] for label in range(len(self.class_names))}
                 
                 progress_bar = st.progress(0)
                 status_text = st.empty()
                 
+                # Batch loading - lebih cepat
                 for idx, item in enumerate(dataset):
                     try:
-                        # Update progress
-                        progress = (idx + 1) / len(dataset)
-                        progress_bar.progress(progress)
-                        status_text.text(f"Processing {idx + 1}/{len(dataset)} images...")
+                        # Update progress setiap 10 images
+                        if idx % 10 == 0:
+                            progress = (idx + 1) / len(dataset)
+                            progress_bar.progress(progress)
+                            status_text.text(f"Loading {idx + 1}/{len(dataset)} images...")
                         
                         # Get image dan label
                         image = item['image']  # PIL Image
@@ -95,14 +128,23 @@ class ModelEvaluation:
                         original = image.resize((224, 224))
                         original_images[label].append(np.array(original, dtype=np.uint8))
                         
-                        # Preprocess untuk model
-                        preprocessed = self.preprocess_image(image)
-                        class_images[label].append(preprocessed)
+                        # Simpan PIL image untuk batch preprocessing nanti
+                        class_images_raw[label].append(image)
                     
                     except Exception as e:
                         # Skip image yang error
-                        st.warning(f"Skipping image {idx + 1}: {str(e)}")
+                        if idx % 50 == 0:  # Hanya warning setiap 50 images
+                            st.warning(f"Skipping some images due to errors")
                         continue
+                
+                # Batch preprocessing - JAUH lebih cepat!
+                status_text.text("Preprocessing images in batches...")
+                class_images = {}
+                for label, images in class_images_raw.items():
+                    if len(images) > 0:
+                        class_images[label] = list(self.preprocess_images_batch(images))
+                    else:
+                        class_images[label] = []
                 
                 progress_bar.empty()
                 status_text.empty()
@@ -124,11 +166,11 @@ class ModelEvaluation:
             return None, None, None, False
     
     def load_from_local(self):
-        """Load test dataset dari folder lokal"""
+        """Load test dataset dari folder lokal dengan batch preprocessing"""
         if not os.path.exists(self.local_test_folder):
             return None, None, None, False
         
-        class_images = {label: [] for label in range(len(self.class_names))}
+        class_images_raw = {label: [] for label in range(len(self.class_names))}
         original_images = {label: [] for label in range(len(self.class_names))}
         
         # Load semua gambar dari setiap kelas
@@ -144,19 +186,31 @@ class ModelEvaluation:
             if len(image_files) == 0:
                 continue
             
+            # Load PIL images dulu
+            pil_images = []
             for image_file in image_files:
                 image_path = os.path.join(class_folder, image_file)
                 try:
-                    # Load original untuk visualisasi
-                    original = Image.open(image_path).convert('RGB').resize((224, 224))
-                    original_images[label].append(np.array(original, dtype=np.uint8))
+                    img = Image.open(image_path).convert('RGB')
+                    pil_images.append(img)
                     
-                    # Preprocess untuk model
-                    preprocessed = self.preprocess_image(image_path)
-                    class_images[label].append(preprocessed)
+                    # Store original untuk visualisasi
+                    original = img.resize((224, 224))
+                    original_images[label].append(np.array(original, dtype=np.uint8))
                 except Exception:
-                    # Skip gambar yang error
                     continue
+            
+            # Batch preprocessing - lebih cepat!
+            if len(pil_images) > 0:
+                class_images_raw[label] = pil_images
+        
+        # Preprocess semua images per kelas
+        class_images = {}
+        for label, images in class_images_raw.items():
+            if len(images) > 0:
+                class_images[label] = list(self.preprocess_images_batch(images))
+            else:
+                class_images[label] = []
         
         total_images = sum(len(images) for images in class_images.values())
         
@@ -245,14 +299,14 @@ class ModelEvaluation:
         num_to_sample = st.number_input(
             "Jumlah gambar untuk evaluasi:",
             min_value=1,
-            max_value=min(200, total_images),  # Limit max 200 untuk avoid memory issues
+            max_value=total_images,  # Tidak ada limit lagi!
             value=default_samples,
             step=10,
-            help="Pilih jumlah gambar yang akan dievaluasi. Untuk performa optimal, gunakan max 100-200 gambar."
+            help="Pilih jumlah gambar yang akan dievaluasi. Dengan optimasi batch processing, Anda bisa evaluasi semua gambar!"
         )
         
-        if num_to_sample > 150:
-            st.warning("⚠️ Evaluasi dengan >150 gambar mungkin lambat. Disarankan menggunakan 50-100 gambar.")
+        if num_to_sample > 300:
+            st.info(f"ℹ️ Mengevaluasi {num_to_sample} gambar. Proses akan memakan waktu beberapa menit.")
         
         # Pilih sampel
         test_images, test_labels = self.select_test_samples(class_images, num_to_sample)
@@ -277,20 +331,33 @@ class ModelEvaluation:
             
             st.info(f"🔍 Processing {len(test_images)} images for evaluation...")
             
-            # Prediksi dengan batch untuk memory efficiency
-            batch_size = 32
+            # Prediksi dengan batch lebih besar untuk kecepatan
+            batch_size = 64  # Naik dari 32 ke 64
             predictions = []
+            
+            progress_bar = st.progress(0)
+            status_text = st.empty()
             
             for i in range(0, len(test_images), batch_size):
                 batch = test_images[i:i+batch_size]
                 batch_pred = self.model_handler.model.predict(batch, verbose=0)
                 predictions.extend(batch_pred)
+                
+                # Update progress
+                progress = min((i + batch_size) / len(test_images), 1.0)
+                progress_bar.progress(progress)
+                status_text.text(f"Predicting: {min(i + batch_size, len(test_images))}/{len(test_images)} images")
+            
+            progress_bar.empty()
+            status_text.empty()
             
             predictions = np.array(predictions)
             predicted_labels = np.argmax(predictions, axis=1)
             
             end_time = time.time()
             execution_time = end_time - start_time
+            
+            st.success(f"✅ Evaluation completed in {execution_time:.2f} seconds ({len(test_images)/execution_time:.1f} images/sec)")
             
             # Display results
             self.display_evaluation_results(test_images, test_labels, predicted_labels)
