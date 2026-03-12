@@ -21,20 +21,14 @@ class ModelEvaluation:
         """
         self.model_handler = model_handler
         self.class_names = class_names
-        self.HF_DATASET_REPO = "archiesinaga/bacteria-classification-test-data"
-        self.local_test_folder = os.path.join(os.getcwd(), 'test')
     
-    def preprocess_image(self, image):
+    def preprocess_image(self, image_path):
         """
         Preprocess individual image for model input.
         PENTING: Harus sama persis dengan training script (ConvNeXt preprocessing)!
-        
-        Args:
-            image: PIL Image atau path ke image
         """
-        # 1. Load image jika berupa path
-        if isinstance(image, str):
-            image = Image.open(image)
+        # 1. Load image
+        image = Image.open(image_path)
         
         # 2. Convert ke RGB jika grayscale
         if image.mode != 'RGB':
@@ -47,179 +41,13 @@ class ModelEvaluation:
         image = np.array(image, dtype=np.float32)
         
         # 5. ✅ KUNCI: Gunakan ConvNeXt preprocessing (SAMA dengan training!)
+        # IMPORTANT: preprocess_input expects shape (height, width, channels) or (batch, height, width, channels)
+        # We have (224, 224, 3), so we need to add batch dimension temporarily
         image_batch = np.expand_dims(image, axis=0)  # Shape: (1, 224, 224, 3)
         image_batch = tf.keras.applications.convnext.preprocess_input(image_batch)
         image = image_batch[0]  # Remove batch dimension: (224, 224, 3)
         
         return image
-    
-    def preprocess_images_batch(self, images):
-        """
-        Preprocess multiple images sekaligus untuk performa lebih cepat.
-        
-        Args:
-            images: List of PIL Images atau paths
-        Returns:
-            numpy array of preprocessed images
-        """
-        processed = []
-        for img in images:
-            # Load image jika berupa path
-            if isinstance(img, str):
-                img = Image.open(img)
-            
-            # Convert ke RGB jika grayscale
-            if img.mode != 'RGB':
-                img = img.convert('RGB')
-            
-            # Resize ke ukuran training (224x224)
-            img = img.resize((224, 224))
-            
-            # Convert ke numpy array
-            processed.append(np.array(img, dtype=np.float32))
-        
-        # Stack menjadi batch dan preprocess sekaligus
-        batch = np.stack(processed, axis=0)
-        batch = tf.keras.applications.convnext.preprocess_input(batch)
-        
-        return batch
-    
-    def load_from_huggingface(self):
-        """Load test dataset dari Hugging Face"""
-        try:
-            # Lazy import - hanya load saat dibutuhkan
-            from datasets import load_dataset
-            
-            with st.spinner('📥 Downloading test dataset from Hugging Face...'):
-                # Load dataset dari Hugging Face
-                dataset = load_dataset(self.HF_DATASET_REPO, split='test')
-                
-                if len(dataset) == 0:
-                    st.warning("⚠️ Dataset test kosong")
-                    return None, None, None, None
-                
-                st.info(f"☁️ Loaded {len(dataset)} test images from Hugging Face")
-                
-                # Inisialisasi - simpan PIL images dulu, preprocess nanti
-                class_images_raw = {label: [] for label in range(len(self.class_names))}
-                original_images = {label: [] for label in range(len(self.class_names))}
-                
-                progress_bar = st.progress(0)
-                status_text = st.empty()
-                
-                # Batch loading - lebih cepat
-                for idx, item in enumerate(dataset):
-                    try:
-                        # Update progress setiap 10 images
-                        if idx % 10 == 0:
-                            progress = (idx + 1) / len(dataset)
-                            progress_bar.progress(progress)
-                            status_text.text(f"Loading {idx + 1}/{len(dataset)} images...")
-                        
-                        # Get image dan label
-                        image = item['image']  # PIL Image
-                        label = item['label']  # Integer label
-                        
-                        # Validasi label
-                        if label < 0 or label >= len(self.class_names):
-                            continue
-                        
-                        # Store original untuk visualisasi
-                        original = image.resize((224, 224))
-                        original_images[label].append(np.array(original, dtype=np.uint8))
-                        
-                        # Simpan PIL image untuk batch preprocessing nanti
-                        class_images_raw[label].append(image)
-                    
-                    except Exception as e:
-                        # Skip image yang error
-                        if idx % 50 == 0:  # Hanya warning setiap 50 images
-                            st.warning(f"Skipping some images due to errors")
-                        continue
-                
-                # Batch preprocessing - JAUH lebih cepat!
-                status_text.text("Preprocessing images in batches...")
-                class_images = {}
-                for label, images in class_images_raw.items():
-                    if len(images) > 0:
-                        class_images[label] = list(self.preprocess_images_batch(images))
-                    else:
-                        class_images[label] = []
-                
-                progress_bar.empty()
-                status_text.empty()
-                
-                total_images = sum(len(images) for images in class_images.values())
-                st.success(f"✅ {total_images} images ready from {len([v for v in class_images.values() if len(v) > 0])} classes")
-                
-                return class_images, original_images, total_images, True
-                
-        except Exception as e:
-            st.error(f"❌ Error loading from Hugging Face: {str(e)}")
-            st.info(
-                f"**Troubleshooting:**\n\n"
-                f"1. Pastikan dataset ada: `{self.HF_DATASET_REPO}`\n\n"
-                f"2. Pastikan dataset bersifat **public**\n\n"
-                f"3. Pastikan format dataset benar (kolom 'image' dan 'label')\n\n"
-                f"4. Cek: https://huggingface.co/datasets/{self.HF_DATASET_REPO}"
-            )
-            return None, None, None, False
-    
-    def load_from_local(self):
-        """Load test dataset dari folder lokal dengan batch preprocessing"""
-        if not os.path.exists(self.local_test_folder):
-            return None, None, None, False
-        
-        class_images_raw = {label: [] for label in range(len(self.class_names))}
-        original_images = {label: [] for label in range(len(self.class_names))}
-        
-        # Load semua gambar dari setiap kelas
-        for label, class_name in enumerate(self.class_names):
-            class_folder = os.path.join(self.local_test_folder, class_name)
-            
-            if not os.path.exists(class_folder):
-                continue
-            
-            image_files = [f for f in os.listdir(class_folder) 
-                          if f.lower().endswith(('.jpg', '.jpeg', '.png', '.tif', '.tiff'))]
-            
-            if len(image_files) == 0:
-                continue
-            
-            # Load PIL images dulu
-            pil_images = []
-            for image_file in image_files:
-                image_path = os.path.join(class_folder, image_file)
-                try:
-                    img = Image.open(image_path).convert('RGB')
-                    pil_images.append(img)
-                    
-                    # Store original untuk visualisasi
-                    original = img.resize((224, 224))
-                    original_images[label].append(np.array(original, dtype=np.uint8))
-                except Exception:
-                    continue
-            
-            # Batch preprocessing - lebih cepat!
-            if len(pil_images) > 0:
-                class_images_raw[label] = pil_images
-        
-        # Preprocess semua images per kelas
-        class_images = {}
-        for label, images in class_images_raw.items():
-            if len(images) > 0:
-                class_images[label] = list(self.preprocess_images_batch(images))
-            else:
-                class_images[label] = []
-        
-        total_images = sum(len(images) for images in class_images.values())
-        
-        if total_images == 0:
-            return None, None, None, False
-        
-        st.success(f"🏠 Loaded {total_images} local images from {len([v for v in class_images.values() if len(v) > 0])} classes")
-        
-        return class_images, original_images, total_images, True
     
     def select_test_samples(self, class_images, num_samples):
         """Select test samples based on user-specified count with even distribution per class."""
@@ -254,120 +82,28 @@ class ModelEvaluation:
         
         return sampled_images, sampled_labels
     
-    def get_test_images(self):
-        """
-        Load test images dengan prioritas:
-        1. Folder lokal (jika ada) - untuk development
-        2. Hugging Face - untuk production/cloud
-        """
-        class_images = None
-        original_images = None
-        total_images = 0
-        
-        # Coba load dari lokal dulu
-        if os.path.exists(self.local_test_folder):
-            class_images, original_images, total_images, success = self.load_from_local()
-            if success:
-                st.info("📂 Using local test dataset")
-        
-        # Jika lokal tidak ada atau gagal, load dari Hugging Face
-        if class_images is None or total_images == 0:
-            st.info("🌐 Local test folder not found, loading from Hugging Face...")
-            class_images, original_images, total_images, success = self.load_from_huggingface()
-            
-            if not success or class_images is None:
-                st.error(
-                    "❌ **Tidak dapat memuat dataset test!**\n\n"
-                    f"**Lokasi lokal:** `{self.local_test_folder}`\n\n"
-                    f"**Hugging Face:** `{self.HF_DATASET_REPO}`\n\n"
-                    "**Solusi:**\n\n"
-                    "1. Untuk development: Pastikan folder `test/` ada dengan struktur:\n"
-                    "   ```\n"
-                    "   test/\n"
-                    "     Acinetobacter baumannii/\n"
-                    "       image1.jpg\n"
-                    "     Actinomyces israelii/\n"
-                    "       image2.jpg\n"
-                    "   ```\n\n"
-                    "2. Untuk production: Pastikan dataset sudah di-upload ke Hugging Face"
-                )
-                return None, None
-        
-        # User input untuk jumlah sampel
-        default_samples = min(100, total_images)  # Default max 100 untuk performa
-        
-        num_to_sample = st.number_input(
-            "Jumlah gambar untuk evaluasi:",
-            min_value=1,
-            max_value=total_images,  # Tidak ada limit lagi!
-            value=default_samples,
-            step=10,
-            help="Pilih jumlah gambar yang akan dievaluasi. Dengan optimasi batch processing, Anda bisa evaluasi semua gambar!"
-        )
-        
-        if num_to_sample > 300:
-            st.info(f"ℹ️ Mengevaluasi {num_to_sample} gambar. Proses akan memakan waktu beberapa menit.")
-        
-        # Pilih sampel
-        test_images, test_labels = self.select_test_samples(class_images, num_to_sample)
-        
-        # Store original images untuk visualisasi
-        self.original_test_images, _ = self.select_test_samples(original_images, num_to_sample)
-        
-        return test_images, test_labels
-    
     def evaluate_model(self, test_images, test_labels):
         """Evaluate model on test images and display results in Streamlit."""
-        try:
-            start_time = time.time()
-            
-            # Convert list ke numpy array
-            test_images = np.array(test_images, dtype=np.float32)
-            test_labels = np.array(test_labels, dtype=np.int32)
-            
-            # Validate the shape of the test images array
-            if test_images.ndim != 4:
-                raise ValueError(f"test_images harus berupa array dengan dimensi (jumlah_gambar, tinggi, lebar, saluran), got shape: {test_images.shape}")
-            
-            st.info(f"🔍 Processing {len(test_images)} images for evaluation...")
-            
-            # Prediksi dengan batch lebih besar untuk kecepatan
-            batch_size = 64  # Naik dari 32 ke 64
-            predictions = []
-            
-            progress_bar = st.progress(0)
-            status_text = st.empty()
-            
-            for i in range(0, len(test_images), batch_size):
-                batch = test_images[i:i+batch_size]
-                batch_pred = self.model_handler.model.predict(batch, verbose=0)
-                predictions.extend(batch_pred)
-                
-                # Update progress
-                progress = min((i + batch_size) / len(test_images), 1.0)
-                progress_bar.progress(progress)
-                status_text.text(f"Predicting: {min(i + batch_size, len(test_images))}/{len(test_images)} images")
-            
-            progress_bar.empty()
-            status_text.empty()
-            
-            predictions = np.array(predictions)
-            predicted_labels = np.argmax(predictions, axis=1)
-            
-            end_time = time.time()
-            execution_time = end_time - start_time
-            
-            st.success(f"✅ Evaluation completed in {execution_time:.2f} seconds ({len(test_images)/execution_time:.1f} images/sec)")
-            
-            # Display results
-            self.display_evaluation_results(test_images, test_labels, predicted_labels)
-            
-            return execution_time
-            
-        except Exception as e:
-            st.error(f"❌ Error during evaluation: {str(e)}")
-            st.exception(e)
-            return 0
+        start_time = time.time()
+        
+        # Convert list ke numpy array
+        test_images = np.array(test_images, dtype=np.float32)
+        
+        # Validate the shape of the test images array
+        if test_images.ndim != 4:
+            raise ValueError(f"test_images harus berupa array dengan dimensi (jumlah_gambar, tinggi, lebar, saluran), got shape: {test_images.shape}")
+        
+        # Prediksi
+        predictions = self.model_handler.model.predict(test_images, verbose=1)
+        predicted_labels = np.argmax(predictions, axis=1)
+        
+        end_time = time.time()
+        execution_time = end_time - start_time
+        
+        # Display results
+        self.display_evaluation_results(test_images, test_labels, predicted_labels)
+        
+        return execution_time
     
     def display_evaluation_results(self, test_images, true_labels, predicted_labels):
         """Display evaluation results: prediction images, confusion matrix, and classification report."""
@@ -419,7 +155,7 @@ class ModelEvaluation:
         )
         report_df = pd.DataFrame(report).transpose()
         
-        # Convert support column to object type first before setting string value
+        # ✅ FIX: Convert support column to object type first before setting string value
         report_df['support'] = report_df['support'].astype('object')
         
         # Format kolom support
@@ -508,3 +244,70 @@ class ModelEvaluation:
         
         plt.tight_layout()
         st.pyplot(fig)
+    
+    def get_test_images(self):
+        """Load and preprocess images from the test folder - SIMPLIFIED VERSION."""
+        test_folder = os.path.join(os.getcwd(), 'test')
+        
+        # Cek apakah folder test ada
+        if not os.path.exists(test_folder):
+            st.error(f"❌ Folder `test/` tidak ditemukan")
+            return None, None
+        
+        test_images, test_labels = [], []
+        class_images = {label: [] for label in range(len(self.class_names))}
+        original_images = {label: [] for label in range(len(self.class_names))}  # Store original for display
+        
+        # Load semua gambar dari setiap kelas (tanpa menampilkan detail)
+        for label, class_name in enumerate(self.class_names):
+            class_folder = os.path.join(test_folder, class_name)
+            
+            if not os.path.exists(class_folder):
+                continue
+            
+            image_files = [f for f in os.listdir(class_folder) 
+                          if f.lower().endswith(('.jpg', '.jpeg', '.png', '.tif', '.tiff'))]
+            
+            if len(image_files) == 0:
+                continue
+            
+            for image_file in image_files:
+                image_path = os.path.join(class_folder, image_file)
+                try:
+                    # Load original for visualization
+                    original = Image.open(image_path).convert('RGB').resize((224, 224))
+                    original_images[label].append(np.array(original, dtype=np.uint8))
+                    
+                    # Preprocess for model
+                    preprocessed = self.preprocess_image(image_path)
+                    class_images[label].append(preprocessed)
+                except Exception:
+                    # Skip gambar yang error tanpa menampilkan warning
+                    continue
+        
+        total_images = sum(len(images) for images in class_images.values())
+        
+        if total_images == 0:
+            st.error("❌ Tidak ada gambar yang ditemukan di folder `test/`")
+            return None, None
+        
+        # Tampilkan info sederhana
+        st.success(f"✅ Total {total_images} gambar ditemukan dari {len([v for v in class_images.values() if len(v) > 0])} kelas")
+        
+        # User input untuk jumlah sampel
+        num_to_sample = st.number_input(
+            "Jumlah gambar untuk evaluasi:",
+            min_value=1,
+            max_value=total_images,
+            value=min(len(self.class_names) * 10, total_images),
+            step=1,
+            help="Pilih jumlah gambar yang akan dievaluasi. Gambar akan dipilih secara merata dari setiap kelas."
+        )
+        
+        # Pilih sampel
+        test_images, test_labels = self.select_test_samples(class_images, num_to_sample)
+        
+        # Store original images for visualization
+        self.original_test_images, _ = self.select_test_samples(original_images, num_to_sample)
+        
+        return test_images, test_labels

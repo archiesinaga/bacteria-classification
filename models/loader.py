@@ -37,7 +37,7 @@ class ModelHandler:
         """
         Melakukan prediksi pada gambar yang telah diproses.
         
-        Args:
+        Args:	
             processed_image (numpy.ndarray): Gambar yang telah diproses (4D tensor)
         
         Returns:
@@ -51,3 +51,4 @@ class ModelHandler:
         probability = predictions[0][predicted_class]
         
         return self.class_names[predicted_class], probability, predictions
+

@@ -45,53 +45,35 @@ class BacteriaClassificationApp:
         }
     
     def preprocess_image(self, image):
-        """
-        Preprocessing gambar sesuai dengan training script (ConvNeXt).
-        PENTING: Harus sama persis dengan preprocessing saat training!
-        """
-        # 1. Resize ke ukuran yang sama dengan training (224x224)
         image = image.resize((224, 224))
         
-        # 2. Convert ke RGB jika grayscale
         if image.mode != 'RGB':
             image = image.convert('RGB')
         
-        # 3. Convert ke numpy array dengan dtype float32
         image = np.array(image, dtype=np.float32)
         
-        # 4. Tambahkan batch dimension (1, 224, 224, 3)
         image = np.expand_dims(image, axis=0)
         
-        # 5. ✅ KUNCI: Gunakan ConvNeXt preprocessing (SAMA dengan training!)
-        # Ini menggunakan ImageNet mean & std normalization
-        # Formula: (image - mean) / std
-        # mean = [123.675, 116.28, 103.53]
-        # std = [58.395, 57.12, 57.375]
         image = tf.keras.applications.convnext.preprocess_input(image)
         
         return image
     
     def predict_bacteria(self, image):
-        """Melakukan prediksi jenis bakteri dari citra."""
         start_time = time.time()
         
-        # Preprocess gambar (sesuai training)
         processed_image = self.preprocess_image(image)
         
-        # Prediksi
         label, probability, _ = self.model_handler.predict(processed_image)
         
         end_time = time.time()
         execution_time = end_time - start_time
         
-        # Validasi: deteksi citra bukan bakteri
         if probability < 0.5:
             return None, None, execution_time
         
         return label, probability, execution_time
     
     def display_classification(self):
-        """Menampilkan interface upload gambar."""
         uploaded_file = st.file_uploader(
             "Unggah citra mikroskopis bakteri", 
             type=["jpg", "jpeg", "png", "tif", "tiff"]
@@ -100,7 +82,7 @@ class BacteriaClassificationApp:
         if uploaded_file is not None:
             image = Image.open(uploaded_file)
             st.image(image, caption='Citra mikroskopis yang diunggah', 
-                    use_column_width=True)
+                    use_container_width=True)
             return image
         
         return None
